@@ -1,10 +1,10 @@
 import sys
-import pandas as pd
 import time
 import argparse
 import csv
 import json
 import re
+import random
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -103,7 +103,7 @@ class JustDialScraper:
 
     def scroll_to_load_more(self, max_scrolls=10):
         """
-        Scroll down to trigger infinite scroll loading
+        Scroll down to trigger infinite scroll loading with human-like behavior
 
         Args:
             max_scrolls (int): Maximum number of scroll attempts
@@ -115,11 +115,33 @@ class JustDialScraper:
         scroll_count = 0
 
         while scroll_count < max_scrolls:
-            # Scroll to bottom
+            # Random scroll distance (80-95% of page height) to appear more human
+            scroll_percentage = random.uniform(0.8, 0.95)
+            current_height = self.driver.execute_script("return document.body.scrollHeight")
+            scroll_position = int(current_height * scroll_percentage)
+            
+            # Smooth scroll with random speed
+            self.driver.execute_script(f"""
+                window.scrollTo({{
+                    top: {scroll_position},
+                    behavior: 'smooth'
+                }});
+            """)
+            
+            # Random delay to simulate reading (2-4 seconds)
+            time.sleep(random.uniform(2, 4))
+            
+            # Occasionally scroll back up a bit (like a human would)
+            if random.random() < 0.3:
+                scroll_back = random.randint(100, 300)
+                self.driver.execute_script(f"window.scrollBy(0, -{scroll_back});")
+                time.sleep(random.uniform(0.5, 1.5))
+            
+            # Scroll to actual bottom
             self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-
-            # Wait for new content to load
-            time.sleep(2)
+            
+            # Random wait for content to load (2-3 seconds)
+            time.sleep(random.uniform(2, 3))
 
             # Check if new content was loaded
             new_height = self.driver.execute_script("return document.body.scrollHeight")
@@ -129,7 +151,6 @@ class JustDialScraper:
             else:
                 initial_height = new_height
                 scroll_count += 1
-                time.sleep(1)
 
         return scroll_count > 0
 
@@ -250,6 +271,15 @@ class JustDialScraper:
                         if business_data['name'] and business_data['name'] != 'N/A' and business_data['name'].strip():
                             batch_data.append(business_data)
                             print(f"✓ Successfully extracted: {business_data['name']}")
+                    
+                    # Occasionally hover over random elements to appear human
+                    if current_count > 0 and random.random() < 0.4:
+                        try:
+                            random_element = random.choice(store_elements[:min(current_count, 10)])
+                            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", random_element)
+                            time.sleep(random.uniform(0.3, 0.8))
+                        except:
+                            pass
 
                     # Always try to scroll to get more depth (min_scrolls), even if we have enough items
                     if scroll_count < min_scrolls:
@@ -257,7 +287,7 @@ class JustDialScraper:
                         self.scroll_to_load_more(max_scrolls=1)
                         scroll_count += 1
                         previous_count = current_count
-                        time.sleep(2)  # Wait for content to load
+                        time.sleep(random.uniform(1.5, 2.5))  # Random wait for content to load
                     elif len(batch_data) >= batch_size:
                         # We've done minimum scrolls and have enough items
                         break
@@ -277,13 +307,13 @@ class JustDialScraper:
         except Exception as e:
             return []
 
-    def scrape_justdial(self, url, num_batches=1, max_scrolls=5, inspect_structure=False, batch_size=50, pause_between_batches=5, min_scrolls=5):
+    def scrape_justdial(self, url, num_batches=10, max_scrolls=5, inspect_structure=False, batch_size=50, pause_between_batches=5, min_scrolls=5):
         """
         Main scraping function to extract business data from JustDial with batch processing
 
         Args:
             url (str): JustDial URL to scrape
-            num_batches (int): Number of batches to scrape (default: 5)
+            num_batches (int): Number of batches to scrape (default: 10)
             max_scrolls (int): Maximum scroll attempts for infinite scroll (default: 5)
             inspect_structure (bool): Inspect page structure if no listings found
             batch_size (int): Number of items to scrape per batch (default: 50)
@@ -424,7 +454,7 @@ def main():
     """Main function to run the scraper"""
     parser = argparse.ArgumentParser(description='Scrape business listings from JustDial')
     parser.add_argument('url', help='JustDial URL to scrape')
-    parser.add_argument('-n', '--num-batches', type=int, default=5, help='Number of batches to scrape (default: 5)')
+    parser.add_argument('-n', '--num-batches', type=int, default=2, help='Number of batches to scrape (default: 2)')
     parser.add_argument('--no-headless', action='store_true', help='Run with visible browser (headless is default)')
     parser.add_argument('--output', default=None, help='Output filename (without extension). If not provided, generated from URL')
     parser.add_argument('--format', choices=['csv', 'json', 'both'], default='csv', help='Output format')
@@ -482,7 +512,7 @@ if __name__ == "__main__":
         scraper = JustDialScraper(headless=True)
         try:
             url = "https://www.justdial.com/Bangalore/Pg-Accommodations/"
-            data = scraper.scrape_justdial(url, num_batches=5, batch_size=50, pause_between_batches=5, min_scrolls=5)
+            data = scraper.scrape_justdial(url, num_batches=2, batch_size=50, pause_between_batches=5, min_scrolls=5)
             filename = generate_filename_from_url(url)
             scraper.save_to_csv(data, f'{filename}.csv')
             print(f"\n✓ Data saved to: {filename}.csv")
