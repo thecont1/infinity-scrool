@@ -312,9 +312,13 @@ class JustDialScraper:
         # Try to read existing CSV file
         try:
             existing_df = pd.read_csv(filename, encoding='utf-8')
+            
             # Ensure existing data has datestamp column
             if 'datestamp' not in existing_df.columns:
                 existing_df['datestamp'] = datetime.now().date().isoformat()
+            
+            # Ensure existing data has the correct columns in the correct order
+            existing_df = existing_df[['datestamp', 'name', 'address']]
 
             # Combine existing and new data
             combined_df = pd.concat([existing_df, new_df], ignore_index=True)
@@ -335,6 +339,9 @@ class JustDialScraper:
         
         # Sort by name for better readability
         combined_df = combined_df.sort_values(by='name')
+        
+        # Ensure column order is correct before saving
+        combined_df = combined_df[['datestamp', 'name', 'address']]
         
         # Save to CSV
         combined_df.to_csv(filename, index=False, encoding='utf-8')
