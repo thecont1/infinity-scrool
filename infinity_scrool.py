@@ -192,15 +192,16 @@ class JustDialScraper:
 
         return business_data
 
-    def scrape_single_batch(self, url, batch_size=10, max_scrolls=10, inspect_structure=False):
+    def scrape_single_batch(self, url, batch_size=50, max_scrolls=5, inspect_structure=False, min_scrolls=5):
         """
-        Scrape a single batch of items from JustDial
+        Scrape a single batch of items from JustDial with deeper scrolling
 
         Args:
             url (str): JustDial URL to scrape
-            batch_size (int): Number of items to scrape in this batch
-            max_scrolls (int): Maximum scroll attempts for infinite scroll
+            batch_size (int): Number of items to scrape in this batch (default: 50)
+            max_scrolls (int): Maximum scroll attempts for infinite scroll (default: 5)
             inspect_structure (bool): Inspect page structure if no listings found
+            min_scrolls (int): Minimum scrolls to perform for depth (default: 5)
 
         Returns:
             list: List of business data dictionaries
@@ -220,9 +221,10 @@ class JustDialScraper:
 
             batch_data = []
             previous_count = 0
+            scroll_count = 0
 
-            # Scroll to load more content if needed
-            while True:
+            # Scroll to load more content - push for minimum scrolls for depth
+            while scroll_count < max_scrolls:
                 # Find all business listing elements
                 try:
                     # Primary selector for business listings
@@ -242,9 +244,6 @@ class JustDialScraper:
 
                     # Extract data from new elements
                     for i in range(previous_count, current_count):
-                        if len(batch_data) >= batch_size:
-                            break
-
                         business_data = self.extract_business_data(store_elements[i])
                         
                         # Only add valid entries (not empty, not N/A)
@@ -252,35 +251,44 @@ class JustDialScraper:
                             batch_data.append(business_data)
                             print(f"✓ Successfully extracted: {business_data['name']}")
 
-                    # Check if we have enough items
-                    if len(batch_data) >= batch_size:
+                    # Always try to scroll to get more depth (min_scrolls), even if we have enough items
+                    if scroll_count < min_scrolls:
+                        # Scroll regardless of current count
+                        self.scroll_to_load_more(max_scrolls=1)
+                        scroll_count += 1
+                        previous_count = current_count
+                        time.sleep(2)  # Wait for content to load
+                    elif len(batch_data) >= batch_size:
+                        # We've done minimum scrolls and have enough items
                         break
-
-                    # Try to scroll for more content
-                    if current_count == previous_count or not self.scroll_to_load_more(max_scrolls=1):
-                        break
-
-                    previous_count = current_count
+                    else:
+                        # Try to scroll for more content
+                        if current_count == previous_count or not self.scroll_to_load_more(max_scrolls=1):
+                            break
+                        scroll_count += 1
+                        previous_count = current_count
 
                 except Exception as e:
                     break
 
+            print(f"  ({scroll_count} scrolls completed, {len(batch_data)} items extracted)")
             return batch_data
 
         except Exception as e:
             return []
 
-    def scrape_justdial(self, url, num_batches=5, max_scrolls=10, inspect_structure=False, batch_size=20, pause_between_batches=5):
+    def scrape_justdial(self, url, num_batches=1, max_scrolls=5, inspect_structure=False, batch_size=50, pause_between_batches=5, min_scrolls=5):
         """
         Main scraping function to extract business data from JustDial with batch processing
 
         Args:
             url (str): JustDial URL to scrape
             num_batches (int): Number of batches to scrape (default: 5)
-            max_scrolls (int): Maximum scroll attempts for infinite scroll
+            max_scrolls (int): Maximum scroll attempts for infinite scroll (default: 5)
             inspect_structure (bool): Inspect page structure if no listings found
-            batch_size (int): Number of items to scrape per batch (default: 20)
+            batch_size (int): Number of items to scrape per batch (default: 50)
             pause_between_batches (int): Seconds to pause between batches (default: 5)
+            min_scrolls (int): Minimum scrolls per batch for depth (default: 5)
 
         Returns:
             list: List of business data dictionaries
@@ -290,8 +298,8 @@ class JustDialScraper:
         for batch_num in range(num_batches):
             print(f"\n--- Batch {batch_num + 1}/{num_batches} ---")
             
-            # Scrape this batch
-            batch_data = self.scrape_single_batch(url, batch_size, max_scrolls, inspect_structure)
+            # Scrape this batch with deeper scrolling
+            batch_data = self.scrape_single_batch(url, batch_size, max_scrolls, inspect_structure, min_scrolls)
             all_business_data.extend(batch_data)
             
             # Pause before next batch (except for the last batch)
@@ -415,13 +423,14 @@ def generate_filename_from_url(url):
 def main():
     """Main function to run the scraper"""
     parser = argparse.ArgumentParser(description='Scrape business listings from JustDial')
-    parser.add_argument('url', help='URL to scrape')
+    parser.add_argument('url', help='JustDial URL to scrape')
     parser.add_argument('-n', '--num-batches', type=int, default=5, help='Number of batches to scrape (default: 5)')
     parser.add_argument('--no-headless', action='store_true', help='Run with visible browser (headless is default)')
     parser.add_argument('--output', default=None, help='Output filename (without extension). If not provided, generated from URL')
     parser.add_argument('--format', choices=['csv', 'json', 'both'], default='csv', help='Output format')
-    parser.add_argument('--max-scrolls', type=int, default=10, help='Maximum scroll attempts')
-    parser.add_argument('--batch-size', type=int, default=20, help='Number of items to scrape per batch (default: 20)')
+    parser.add_argument('--max-scrolls', type=int, default=5, help='Maximum scroll attempts (default: 5)')
+    parser.add_argument('--batch-size', type=int, default=50, help='Number of items to scrape per batch (default: 50)')
+    parser.add_argument('--min-scrolls', type=int, default=5, help='Minimum scrolls per batch for depth (default: 5)')
     parser.add_argument('--pause', type=int, default=5, help='Seconds to pause between batches (default: 5)')
 
     args = parser.parse_args()
@@ -442,7 +451,8 @@ def main():
             num_batches=args.num_batches,
             max_scrolls=args.max_scrolls,
             batch_size=args.batch_size,
-            pause_between_batches=args.pause
+            pause_between_batches=args.pause,
+            min_scrolls=args.min_scrolls
         )
 
         # Save data
@@ -472,7 +482,7 @@ if __name__ == "__main__":
         scraper = JustDialScraper(headless=True)
         try:
             url = "https://www.justdial.com/Bangalore/Pg-Accommodations/"
-            data = scraper.scrape_justdial(url, num_batches=5, batch_size=20, pause_between_batches=5)
+            data = scraper.scrape_justdial(url, num_batches=5, batch_size=50, pause_between_batches=5, min_scrolls=5)
             filename = generate_filename_from_url(url)
             scraper.save_to_csv(data, f'{filename}.csv')
             print(f"\n✓ Data saved to: {filename}.csv")
