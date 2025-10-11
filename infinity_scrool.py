@@ -5,6 +5,7 @@ import csv
 import json
 import re
 import random
+import pandas as pd
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -213,20 +214,23 @@ class JustDialScraper:
 
         return business_data
 
-    def scrape_single_batch(self, url, batch_size=50, max_scrolls=5, inspect_structure=False, min_scrolls=5):
+    def scrape_justdial(self, url, n=50):
         """
-        Scrape a single batch of items from JustDial with deeper scrolling
+        Scrape business listings from JustDial
 
         Args:
             url (str): JustDial URL to scrape
-            batch_size (int): Number of items to scrape in this batch (default: 50)
-            max_scrolls (int): Maximum scroll attempts for infinite scroll (default: 5)
-            inspect_structure (bool): Inspect page structure if no listings found
-            min_scrolls (int): Minimum scrolls to perform for depth (default: 5)
+            n (int): Number of results to extract (default: 50)
 
         Returns:
             list: List of business data dictionaries
         """
+        # Calculate number of scrolls needed (approximately 10 results per scroll)
+        num_scrolls = max(1, n // 10)
+        
+        print(f"\nTarget: {n} results")
+        print(f"Let the scraping begin...\n")
+        
         try:
             # Navigate to the URL
             self.driver.get(url)
@@ -240,37 +244,38 @@ class JustDialScraper:
             except NoSuchElementException:
                 pass
 
-            batch_data = []
+            results = []
             previous_count = 0
             scroll_count = 0
 
-            # Scroll to load more content - push for minimum scrolls for depth
-            while scroll_count < max_scrolls:
-                # Find all business listing elements
+            # Scroll to load content
+            while scroll_count < num_scrolls:
                 try:
-                    # Primary selector for business listings
+                    # Find all business listing elements
                     store_elements = self.driver.find_elements(By.CLASS_NAME, 'store-details')
 
                     if not store_elements:
                         # Alternative selectors
                         store_elements = self.driver.find_elements(By.CSS_SELECTOR, '.resultbox, .listing-card, .business-card')
-                    
-                    # If still no elements found, try to inspect the page structure
-                    if not store_elements and inspect_structure and previous_count == 0:
-                        self.inspect_page_structure()
-                        # Try very generic selector as last resort
-                        store_elements = self.driver.find_elements(By.XPATH, "//*[contains(@class, 'store') or contains(@class, 'listing') or contains(@class, 'result') or contains(@class, 'card')]")
 
                     current_count = len(store_elements)
 
                     # Extract data from new elements
                     for i in range(previous_count, current_count):
+                        if len(results) >= n:
+                            break
+                            
                         business_data = self.extract_business_data(store_elements[i])
                         
                         # Only add valid entries (not empty, not N/A)
                         if business_data['name'] and business_data['name'] != 'N/A' and business_data['name'].strip():
-                            batch_data.append(business_data)
-                            print(f"✓ Successfully extracted: {business_data['name']}")
+                            results.append(business_data)
+                            print(f"✓ [{len(results)}/{n}] {business_data['name']}")
+                    
+                    # Check if we have enough results
+                    if len(results) >= n:
+                        print(f"\n✓ Target reached: {len(results)} results extracted")
+                        break
                     
                     # Occasionally hover over random elements to appear human
                     if current_count > 0 and random.random() < 0.4:
@@ -281,63 +286,23 @@ class JustDialScraper:
                         except:
                             pass
 
-                    # Always try to scroll to get more depth (min_scrolls), even if we have enough items
-                    if scroll_count < min_scrolls:
-                        # Scroll regardless of current count
-                        self.scroll_to_load_more(max_scrolls=1)
-                        scroll_count += 1
-                        previous_count = current_count
-                        time.sleep(random.uniform(1.5, 2.5))  # Random wait for content to load
-                    elif len(batch_data) >= batch_size:
-                        # We've done minimum scrolls and have enough items
-                        break
-                    else:
-                        # Try to scroll for more content
-                        if current_count == previous_count or not self.scroll_to_load_more(max_scrolls=1):
-                            break
-                        scroll_count += 1
-                        previous_count = current_count
+                    # Scroll for more content
+                    self.scroll_to_load_more(max_scrolls=1)
+                    scroll_count += 1
+                    previous_count = current_count
+                    time.sleep(random.uniform(1.5, 2.5))
 
                 except Exception as e:
+                    print(f"Error during scraping: {e}")
                     break
 
-            print(f"  ({scroll_count} scrolls completed, {len(batch_data)} items extracted)")
-            return batch_data
+            print(f"\nCompleted: {len(results)} results extracted")
+            return results
 
         except Exception as e:
+            print(f"Fatal error: {e}")
             return []
 
-    def scrape_justdial(self, url, num_batches=10, max_scrolls=5, inspect_structure=False, batch_size=50, pause_between_batches=5, min_scrolls=5):
-        """
-        Main scraping function to extract business data from JustDial with batch processing
-
-        Args:
-            url (str): JustDial URL to scrape
-            num_batches (int): Number of batches to scrape (default: 10)
-            max_scrolls (int): Maximum scroll attempts for infinite scroll (default: 5)
-            inspect_structure (bool): Inspect page structure if no listings found
-            batch_size (int): Number of items to scrape per batch (default: 50)
-            pause_between_batches (int): Seconds to pause between batches (default: 5)
-            min_scrolls (int): Minimum scrolls per batch for depth (default: 5)
-
-        Returns:
-            list: List of business data dictionaries
-        """
-        all_business_data = []
-        
-        for batch_num in range(num_batches):
-            print(f"\n--- Batch {batch_num + 1}/{num_batches} ---")
-            
-            # Scrape this batch with deeper scrolling
-            batch_data = self.scrape_single_batch(url, batch_size, max_scrolls, inspect_structure, min_scrolls)
-            all_business_data.extend(batch_data)
-            
-            # Pause before next batch (except for the last batch)
-            if batch_num < num_batches - 1:
-                print(f"\nPausing for {pause_between_batches} seconds before next batch...")
-                time.sleep(pause_between_batches)
-        
-        return all_business_data
 
     def save_to_csv(self, data, filename='justdial_data.csv'):
         """Save scraped data to CSV file, appending to existing data and removing duplicates"""
@@ -452,18 +417,47 @@ def generate_filename_from_url(url):
 
 def main():
     """Main function to run the scraper"""
-    parser = argparse.ArgumentParser(description='Scrape business listings from JustDial')
-    parser.add_argument('url', help='JustDial URL to scrape')
-    parser.add_argument('-n', '--num-batches', type=int, default=2, help='Number of batches to scrape (default: 2)')
-    parser.add_argument('--no-headless', action='store_true', help='Run with visible browser (headless is default)')
-    parser.add_argument('--output', default=None, help='Output filename (without extension). If not provided, generated from URL')
-    parser.add_argument('--format', choices=['csv', 'json', 'both'], default='csv', help='Output format')
-    parser.add_argument('--max-scrolls', type=int, default=5, help='Maximum scroll attempts (default: 5)')
-    parser.add_argument('--batch-size', type=int, default=50, help='Number of items to scrape per batch (default: 50)')
-    parser.add_argument('--min-scrolls', type=int, default=5, help='Minimum scrolls per batch for depth (default: 5)')
-    parser.add_argument('--pause', type=int, default=5, help='Seconds to pause between batches (default: 5)')
+    print('\n🌀 Infinity Scrool - JustDial Business Listings Scraper')
+    print('An easy-to-use, reliable scraper to download results from any page on JustDial.com.\n')
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+📖 How to use:
+  
+  Basic usage (scrape 50 results):
+    python infinity_scrool.py "https://www.justdial.com/Bangalore/Restaurants/"
+  
+  Get more results:
+    python infinity_scrool.py "https://www.justdial.com/Bangalore/Pg-Accommodations/" -n 100
+  
+  Watch the magic happen (visible browser):
+    python infinity_scrool.py "https://www.justdial.com/Bangalore/Hotels/" -n 200 --no-headless
+  
+  Custom output filename:
+    python infinity_scrool.py "URL" -n 150 --output my-custom-name
+
+💡 Tips:
+  • Results are saved to a CSV file. Filename is determined automatically based on the URL.
+  • Our bot knows how to work with infinite scroll pages.  
+  • Scraper mimics human-like scrolling to play nicely with bot blockers.
+  • Data is deduplicated and appended to existing files. Every time you run the program, you grow the dataset.
+
+🦹‍♀️ PRO TIP: Use this tool judiciously. DO NOT OVERDO IT! 
+
+With that said, happy and responsible scraping! ✨
+'''
+    )
+    parser.add_argument('url', nargs='?', metavar='URL', help='JustDial URL to scrape (e.g., "https://www.justdial.com/Bangalore/Pg-Accommodations/")')
+    parser.add_argument('-n', type=int, default=50, metavar='NUM', help='number of results to extract (default: 50)')
+    parser.add_argument('--no-headless', action='store_true', help='show browser window while scraping')
+    parser.add_argument('--output', default=None, metavar='FILENAME', help='custom output filename without extension (auto-generated if not provided)')
 
     args = parser.parse_args()
+
+    # If no URL provided, print friendly help and exit gracefully
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return
 
     # Generate filename from URL if not provided
     if args.output is None:
@@ -471,52 +465,21 @@ def main():
     else:
         output_filename = args.output
 
-    # Initialize scraper (headless by default, unless --no-headless is specified)
     scraper = JustDialScraper(headless=not args.no_headless)
 
     try:
-        # Scrape data
-        data = scraper.scrape_justdial(
-            url=args.url,
-            num_batches=args.num_batches,
-            max_scrolls=args.max_scrolls,
-            batch_size=args.batch_size,
-            pause_between_batches=args.pause,
-            min_scrolls=args.min_scrolls
-        )
+        data = scraper.scrape_justdial(url=args.url, n=args.n)
 
-        # Save data
-        if args.format in ['csv', 'both']:
-            csv_filename = f'{output_filename}.csv'
-            scraper.save_to_csv(data, csv_filename)
-            print(f"\n✓ Data saved to: {csv_filename}")
-
-        if args.format in ['json', 'both']:
-            json_filename = f'{output_filename}.json'
-            scraper.save_to_json(data, json_filename)
-            print(f"✓ Data saved to: {json_filename}")
+        csv_filename = f'{output_filename}.csv'
+        scraper.save_to_csv(data, csv_filename)
+        print(f"\n✓ Data saved to: {csv_filename}")
 
     except KeyboardInterrupt:
-        pass
+        print("\n\n✗ Scraping interrupted by user")
     except Exception as e:
-        pass
+        print(f"\n✗ Error: {e}")
     finally:
         scraper.close()
 
 if __name__ == "__main__":
-    # Example usage:
-    # python justdial_scraper.py "https://www.justdial.com/Bangalore/Pg-Accommodations/"
-
-    # For direct execution without command line arguments
-    if len(sys.argv) == 1:
-        scraper = JustDialScraper(headless=True)
-        try:
-            url = "https://www.justdial.com/Bangalore/Pg-Accommodations/"
-            data = scraper.scrape_justdial(url, num_batches=2, batch_size=50, pause_between_batches=5, min_scrolls=5)
-            filename = generate_filename_from_url(url)
-            scraper.save_to_csv(data, f'{filename}.csv')
-            print(f"\n✓ Data saved to: {filename}.csv")
-        finally:
-            scraper.close()
-    else:
-        main()
+    main()
