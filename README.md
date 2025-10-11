@@ -48,7 +48,7 @@ JustDial provides a comprehensive, well‑organized directory with rich filters 
 - Custom output filename
 
     ```python
-    ↪ python infinity_scrool.py "URL" -n 150 --output my_data
+    ↪ python infinity_scrool.py "https://www.justdial.com/Bangalore/Pg-Accommodations/" -n 150 --output my_data
     ```
 
 ## Tips
