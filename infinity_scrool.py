@@ -304,78 +304,75 @@ class JustDialScraper:
             return []
 
 
-    def save_to_csv(self, data, filename='justdial_data.csv'):
-        """Save scraped data to CSV file, appending to existing data and removing duplicates"""
+    def save_to_csv(self, data, filename='data.csv'):
+        """Save scraped data to CSV (.csv.gz), appending and de-duplicating."""
         if not data:
             return
 
         new_df = pd.DataFrame(data)
-        # Ensure only name, address, datestamp columns
         new_df = new_df[['datestamp', 'name', 'address']]
-        # Try to read existing CSV file
+
+        def split_address(addr):
+            if pd.isna(addr):
+                return '', ''
+            text = str(addr).strip()
+            if ',' in text:
+                head, tail = text.rsplit(',', 1)
+                return head.strip(), tail.strip()
+            return text, ''
+
+        addr_city = new_df['address'].apply(split_address)
+        new_df['address'] = addr_city.apply(lambda x: x[0])
+        new_df['city'] = addr_city.apply(lambda x: x[1])
+
+        existing_df = None
         try:
-            existing_df = pd.read_csv(filename, encoding='utf-8')
-            
-            # Ensure existing data has datestamp column
+            existing_df = pd.read_csv(filename + '.gz', encoding='utf-8')
+        except FileNotFoundError:
+            try:
+                existing_df = pd.read_csv(filename, encoding='utf-8')
+            except FileNotFoundError:
+                existing_df = None
+            except pd.errors.EmptyDataError:
+                existing_df = None
+        except pd.errors.EmptyDataError:
+            existing_df = None
+
+        if existing_df is not None:
             if 'datestamp' not in existing_df.columns:
                 existing_df['datestamp'] = datetime.now().date().isoformat()
-            
-            # Ensure existing data has the correct columns in the correct order
-            existing_df = existing_df[['datestamp', 'name', 'address']]
-
-            # Combine existing and new data
+            if 'city' not in existing_df.columns:
+                ec = existing_df['address'].apply(split_address)
+                existing_df['address'] = ec.apply(lambda x: x[0])
+                existing_df['city'] = ec.apply(lambda x: x[1])
+            existing_df = existing_df[['datestamp', 'name', 'address', 'city']]
+            # Backfill empty/invalid datestamps in existing data
+            ds = existing_df['datestamp'].astype(str).str.strip()
+            mask_empty = ds.eq('') | ds.eq('nan') | ds.isna()
+            existing_df.loc[mask_empty, 'datestamp'] = datetime.now().date().isoformat()
             combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-            
-        except FileNotFoundError:
+        else:
             combined_df = new_df
-        except pd.errors.EmptyDataError:
-            combined_df = new_df
- 
-        # Remove invalid entries (empty, N/A, or whitespace-only names)
+
+        # Clean and de-duplicate
         combined_df = combined_df[combined_df['name'].notna()]
         combined_df = combined_df[combined_df['name'].str.strip() != '']
         combined_df = combined_df[combined_df['name'] != 'N/A']
-        
-        # Remove duplicates based on name and address, keeping the latest datestamp
+        combined_df['address'] = combined_df['address'].fillna('').astype(str).str.strip()
+        combined_df['city'] = combined_df['city'].fillna('').astype(str).str.strip()
+
+        # Normalize/backfill datestamp before sort
+        combined_df['datestamp'] = combined_df['datestamp'].astype(str).str.strip()
+        mask_empty_all = combined_df['datestamp'].eq('') | combined_df['datestamp'].eq('nan') | combined_df['datestamp'].isna()
+        combined_df.loc[mask_empty_all, 'datestamp'] = datetime.now().date().isoformat()
+
         combined_df = combined_df.sort_values(by='datestamp', ascending=False)
-        combined_df = combined_df.drop_duplicates(subset=['name', 'address'], keep='first')
-        
-        # Sort by name for better readability
+        combined_df = combined_df.drop_duplicates(subset=['name', 'address', 'city'], keep='first')
         combined_df = combined_df.sort_values(by='name')
-        
-        # Ensure column order is correct before saving
-        combined_df = combined_df[['datestamp', 'name', 'address']]
-        
-        # Save to CSV
-        combined_df.to_csv(filename, index=False, encoding='utf-8')
+        combined_df = combined_df[['datestamp', 'name', 'address', 'city']]
 
-    def save_to_json(self, data, filename='justdial_data.json'):
-        """Save scraped data to JSON file, appending to existing data and removing duplicates"""
-        if not data:
-            return
-        # Try to read existing JSON file
-        try:
-            with open(filename, 'r', encoding='utf-8') as f:
-                existing_data = json.load(f)
-                combined_data = existing_data + data
-        except (FileNotFoundError, json.JSONDecodeError):
-            combined_data = data
-
-        # Remove duplicates using pandas, keeping latest datestamp
-        df = pd.DataFrame(combined_data)
-        # Remove invalid entries
-        df = df[df['name'].notna()]
-        df = df[df['name'].str.strip() != '']
-        df = df[df['name'] != 'N/A']
-        df = df.sort_values(by='datestamp', ascending=False)
-        df = df.drop_duplicates(subset=['name', 'address'], keep='first')
-        df = df.sort_values(by='name')
-        # Convert back to list of dicts
-        unique_data = df.to_dict('records')
-        # Save to JSON
-
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(unique_data, f, ensure_ascii=False, indent=2)
+        # Save gzipped CSV
+        combined_df.to_csv(filename + '.gz', index=False, encoding='utf-8', compression='gzip')
 
     def close(self):
         if hasattr(self, 'driver'):
@@ -470,8 +467,9 @@ With that said, happy and responsible scraping! ✨
     try:
         data = scraper.scrape_justdial(url=args.url, n=args.n)
 
-        csv_filename = f'{output_filename}.csv'
-        scraper.save_to_csv(data, csv_filename)
+        csv_filename = f'{output_filename}.csv.gz'
+        # Pass base name without .gz; save_to_csv will add .gz
+        scraper.save_to_csv(data, f'{output_filename}.csv')
         print(f"\n✓ Data saved to: {csv_filename}")
 
     except KeyboardInterrupt:
