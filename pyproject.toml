@@ -1,0 +1,11 @@
+[project]
+name = "infinity-scrool"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pandas>=1.3.0",
+    "selenium>=4.0.0",
+    "webdriver-manager>=3.8.0",
+]
