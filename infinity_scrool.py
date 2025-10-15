@@ -1,8 +1,6 @@
 import sys
 import time
 import argparse
-import csv
-import json
 import re
 import random
 import pandas as pd
@@ -14,8 +12,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
 
 class JustDialScraper:
@@ -74,47 +71,7 @@ class JustDialScraper:
         except Exception as e:
             print(f"Error initializing WebDriver: {e}")
             raise
-
-    def strings_to_number(self, encoded_string):
-        """
-        Decode JustDial's encoded phone numbers
-
-        Args:
-            encoded_string (str): Encoded phone number string
-
-        Returns:
-            str: Decoded phone number
-        """
-        switcher = {
-            'dc': '+', 'fe': '(', 'hg': ')', 'ba': '-',
-            'acb': '0', 'yz': '1', 'wx': '2', 'vu': '3', 'ts': '4',
-            'rq': '5', 'po': '6', 'nm': '7', 'lk': '8', 'ji': '9'
-        }
-        return switcher.get(encoded_string, "")
-
-    def decode_phone_number(self, contact_elements):
-        """
-        Decode phone numbers from JustDial contact elements
-
-        Args:
-            contact_elements: List of contact elements
-
-        Returns:
-            str: Decoded phone number
-        """
-        phone_digits = []
-
-        for element in contact_elements:
-            class_attr = element.get_attribute('class')
-            if 'mobilesv' in class_attr:
-                # Extract the encoded part after 'mobilesv-'
-                encoded_part = class_attr.split('mobilesv-')[-1]
-                decoded_digit = self.strings_to_number(encoded_part)
-                if decoded_digit:
-                    phone_digits.append(decoded_digit)
-
-        return ''.join(phone_digits)
-
+    
     def scroll_to_load_more(self, max_scrolls=10):
         """
         Scroll down to trigger infinite scroll loading with human-like behavior
