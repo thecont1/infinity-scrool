@@ -50,13 +50,26 @@ class JustDialScraper:
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
 
         try:
-            service = Service(ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            try:
+                service = Service()
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            except Exception:
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
             self.wait = WebDriverWait(self.driver, self.timeout)
 
             # Execute script to avoid detection
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            print("Chrome WebDriver initialized successfully")
+            version = None
+            try:
+                caps = getattr(self.driver, 'capabilities', {}) or {}
+                version = caps.get('browserVersion') or caps.get('version')
+            except Exception:
+                pass
+            if version:
+                print(f"Chrome WebDriver initialized successfully (Chrome {version})")
+            else:
+                print("Chrome WebDriver initialized successfully")
 
         except Exception as e:
             print(f"Error initializing WebDriver: {e}")
