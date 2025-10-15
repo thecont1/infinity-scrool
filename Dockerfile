@@ -1,8 +1,9 @@
 # Dockerfile to run infinity_scrool.py against Chrome 141 on Apple Silicon
 # Uses amd64 Selenium standalone Chrome image (emulated on Apple Silicon)
 
-# Pin to Chrome 141 line
-FROM --platform=linux/amd64 selenium/standalone-chrome:141.0
+# Pin to Chrome line (platform is selected at build/run time)
+ARG CHROME_TAG=141.0
+FROM selenium/standalone-chrome:${CHROME_TAG}
 
 USER root
 
