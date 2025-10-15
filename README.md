@@ -29,25 +29,25 @@ JustDial provides a comprehensive, well‑organized directory with rich filters 
 
 - Basic usage: Scrape 50 results by default
 
-    ```python
+    ```bash
     ↪ python infinity_scrool.py "https://www.justdial.com/Bangalore/Pg-Accommodations/"
     ```
 
 - Get more results
 
-    ```python
+    ```bash
     ↪ python infinity_scrool.py "https://www.justdial.com/Bangalore/Pg-Accommodations/" -n 150
     ```
 
 - Watch the magic as it happens in a browser window
 
-    ```python
+    ```bash
     ↪ python infinity_scrool.py "https://www.justdial.com/Bangalore/Pg-Accommodations/" --no-headless
     ```
 
 - Custom output filename
 
-    ```python
+    ```bash
     ↪ python infinity_scrool.py "https://www.justdial.com/Bangalore/Pg-Accommodations/" -n 150 --output my_data
     ```
 
